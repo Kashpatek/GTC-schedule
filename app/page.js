@@ -420,12 +420,33 @@ export default function Page() {
             ))}
           </div>
 
-          {HOURS.map((hour, ri) => (
-            <div key={hour} style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: ri < HOURS.length - 1 ? "1px solid rgba(255,255,255,0.035)" : "none", minHeight: 68 }}>
-              <div style={{ padding: "4px 8px 4px 4px", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", borderRight: "1px solid rgba(255,255,255,0.06)", background: hour === 12 ? "rgba(118,185,0,0.02)" : undefined }}>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600, color: hour === 12 ? "var(--green)" : "#4a4a4a" }}>{fmtH(hour)}</span>
+          {HOURS.map((hour, ri) => {
+            const isLunch = hour === 12;
+            return (
+            <div key={hour} style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: ri < HOURS.length - 1 ? "1px solid rgba(255,255,255,0.035)" : "none", minHeight: isLunch ? 52 : 68 }}>
+              <div style={{ padding: "4px 8px 4px 4px", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", borderRight: "1px solid rgba(255,255,255,0.06)", background: isLunch ? "rgba(255,255,255,0.03)" : undefined }}>
+                <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600, color: isLunch ? "#555" : "#4a4a4a" }}>{fmtH(hour)}</span>
               </div>
-              {DAYS.map((day) => {
+              {isLunch ? (
+                <div style={{
+                  gridColumn: "2 / -1",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  background: "repeating-linear-gradient(135deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 20px)",
+                  borderLeft: "1px solid rgba(255,255,255,0.035)",
+                  position: "relative", overflow: "hidden",
+                }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 16px", borderRadius: 8,
+                    background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)",
+                  }}>
+                    <span style={{ fontSize: 14 }}>🍽</span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "#666" }}>
+                      LUNCH BREAK · 12–1 PM
+                    </span>
+                  </div>
+                </div>
+              ) : DAYS.map((day) => {
                 const ck = `${day.key}-${hour}`;
                 const cd = schedule.cells[ck] || [];
                 const isOver = dragOver === ck;
@@ -436,7 +457,7 @@ export default function Page() {
                     onDragLeave={() => setDragOver(null)}
                     style={{
                       borderLeft: "1px solid rgba(255,255,255,0.035)", padding: 4,
-                      background: isOver ? "rgba(118,185,0,0.08)" : (hour === 12 ? "rgba(255,255,255,0.006)" : undefined),
+                      background: isOver ? "rgba(118,185,0,0.08)" : undefined,
                       transition: "background 0.12s ease", position: "relative", minHeight: 68,
                       display: "flex", flexDirection: "column", gap: 3,
                     }}>
@@ -458,7 +479,8 @@ export default function Page() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* EVENTS */}
