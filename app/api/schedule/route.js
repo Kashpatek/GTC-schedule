@@ -1,15 +1,13 @@
-import { put, list } from "@vercel/blob";
+import { Redis } from "@upstash/redis";
 
-const BLOB_PATH = "sail-schedule-data.json";
+const redis = Redis.fromEnv();
+const KEY = "sail-schedule-data";
 const DEFAULT = { cells: {}, notes: {}, lastUpdated: null, updatedBy: null };
 
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: BLOB_PATH });
-    if (blobs.length === 0) return Response.json(DEFAULT);
-    const res = await fetch(blobs[0].url);
-    const data = await res.json();
-    return Response.json(data);
+    const data = await redis.get(KEY);
+    return Response.json(data || DEFAULT);
   } catch (e) {
     console.error("GET error:", e);
     return Response.json(DEFAULT);
@@ -19,11 +17,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const data = await request.json();
-    await put(BLOB_PATH, JSON.stringify(data), {
-      access: "public",
-      addRandomSuffix: false,
-      contentType: "application/json",
-    });
+    await redis.set(KEY, data);
     return Response.json({ ok: true });
   } catch (e) {
     console.error("POST error:", e);
