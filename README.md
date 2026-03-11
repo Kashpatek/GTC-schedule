@@ -1,35 +1,29 @@
 # SemiAnalysis × SAIL — GTC 2026 Schedule
 
-## Deploy to Vercel (5 min)
+## Deploy to Vercel
 
-### Step 1: Create GitHub repo
-1. Go to https://github.com/new
-2. Name it `sail-schedule`
-3. Click **Create repository**
-4. On the next page click **"uploading an existing file"**
-5. Unzip this zip file on your computer
-6. Drag ALL files from inside the `sail-schedule` folder into the GitHub upload area
-7. Click **Commit changes**
+### Step 1: Get code on GitHub
+1. Go to **github.com/new** → name it `sail-schedule` → Create
+2. Click **"uploading an existing file"**
+3. Unzip this zip, drag ALL files from inside the `sail-schedule` folder into GitHub
+4. Click **Commit changes**
 
-### Step 2: Deploy on Vercel
-1. Go to https://vercel.com/new
-2. Find `sail-schedule` in your repo list → click **Import**
-3. Click **Deploy**
-4. Wait ~60 seconds
+### Step 2: Deploy
+1. Go to **vercel.com/new**
+2. Import `sail-schedule` → click **Deploy**
+3. Wait ~60 sec
 
-### Step 3: Add Vercel KV (for shared storage)
-1. In your Vercel dashboard, go to **Storage** tab
-2. Click **Create Database** → choose **KV (Redis)**
-3. Name it `sail-kv` → click **Create**
-4. Click **Connect to Project** → select `sail-schedule`
-5. Click **Redeploy** (in Deployments tab)
+### Step 3: Add Blob storage (this is what makes it sync)
+1. In your Vercel project dashboard → **Storage** tab
+2. Click **Create** → select **Blob**
+3. Name it anything (e.g. `sail-blob`) → pick a region → Create
+4. It auto-connects to your project and adds the env var
+5. Go to **Deployments** tab → click **⋮** on latest → **Redeploy**
 
-Done! Share the URL with Michelle. Both of you can edit and changes sync live.
+Done. Share the URL with Michelle. Changes sync live between you.
 
-## Features
-- Drag & drop team members into time slots
-- Click circle badge to toggle HOSTING (grey) ↔ INTERVIEWED (red)  
-- Hover × to remove assignments
-- Add notes per slot
-- Live sync between all editors (polls every 5s)
-- Tracks who made the last edit
+## How it works
+- Vercel Blob stores a single JSON file with the schedule state
+- Every edit saves to Blob via API route
+- Every 5 seconds the app polls for changes from other editors
+- No database needed, no Redis, just a JSON blob
