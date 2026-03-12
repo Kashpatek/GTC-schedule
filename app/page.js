@@ -1,11 +1,6 @@
 "use client";
 import { useState, useCallback, useEffect, useRef } from "react";
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   SemiAnalysis × SAIL — GTC 2026 INTERVIEW SCHEDULE
-   Vercel KV-backed shared storage · Drag & drop · Role toggle
-   ═══════════════════════════════════════════════════════════════════════════ */
-
 const TIERS = {
   1: { label: "Generalist / Big Picture", short: "GENERALIST", color: "#76B900", bg: "rgba(118,185,0,0.12)", border: "rgba(118,185,0,0.35)" },
   2: { label: "AI Infra & Software", short: "AI INFRA", color: "#1A84C6", bg: "rgba(26,132,198,0.12)", border: "rgba(26,132,198,0.35)" },
@@ -48,25 +43,23 @@ const tierGrad = (p) => {
   return t.length > 1 ? `linear-gradient(135deg, ${TIERS[t[0]].color}, ${TIERS[t[1]].color})` : TIERS[t[0]].color;
 };
 
-// ─── API Storage ─────────────────────────────────────────────────────────────
+// ─── Storage ─────────────────────────────────────────────────────────────────
+// availability: { "DP": ["sun","mon","tue"], "KC": ["mon","wed"], ... }
 
-const DEFAULT_DATA = { cells: {}, notes: {}, lastUpdated: null, updatedBy: null };
+const DEFAULT_DATA = { cells: {}, notes: {}, availability: {}, lastUpdated: null, updatedBy: null };
 
 async function loadSchedule() {
   try {
     const res = await fetch("/api/schedule");
     if (!res.ok) throw new Error();
-    return await res.json();
+    const data = await res.json();
+    return { ...DEFAULT_DATA, ...data };
   } catch { return DEFAULT_DATA; }
 }
 
 async function saveSchedule(data) {
   try {
-    await fetch("/api/schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
   } catch (e) { console.error("Save failed:", e); }
 }
 
@@ -89,37 +82,23 @@ function RosterBadge({ person, count, onDragStart }) {
   const pc = tierColor(person);
   const t = Array.isArray(person.tier) ? person.tier : [person.tier];
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", JSON.stringify({ id: person.id, src: "roster" }));
-        e.dataTransfer.effectAllowed = "copy";
-        onDragStart();
-      }}
-      style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "6px 12px 6px 6px", borderRadius: 10,
-        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-        cursor: "grab", transition: "all 0.15s ease", userSelect: "none",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = `${pc}40`; e.currentTarget.style.transform = "translateY(-1px)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; e.currentTarget.style.transform = "translateY(0)"; }}
-    >
+    <div draggable onDragStart={(e) => {
+      e.dataTransfer.setData("text/plain", JSON.stringify({ id: person.id, src: "roster" }));
+      e.dataTransfer.effectAllowed = "copy"; onDragStart();
+    }} style={{
+      display: "flex", alignItems: "center", gap: 8, padding: "6px 12px 6px 6px", borderRadius: 10,
+      background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+      cursor: "grab", transition: "all 0.15s ease", userSelect: "none",
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.borderColor = `${pc}40`; e.currentTarget.style.transform = "translateY(-1px)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; e.currentTarget.style.transform = "translateY(0)"; }}>
       <div style={{ position: "relative" }}>
         <InitialCircle person={person} size={32} />
-        {count > 0 && (
-          <div style={{
-            position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%",
-            background: "var(--green)", color: "#000", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 800,
-            display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-          }}>{count}</div>
-        )}
+        {count > 0 && <div style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", background: "var(--green)", color: "#000", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.4)" }}>{count}</div>}
       </div>
       <div>
         <div style={{ fontFamily: "var(--display)", fontSize: 12, fontWeight: 600, color: "#ddd", lineHeight: 1.2 }}>{person.name}</div>
-        <div style={{ fontFamily: "var(--mono)", fontSize: 8, fontWeight: 600, color: pc, letterSpacing: "0.08em", opacity: 0.8 }}>
-          T{t.join("+")} · {TIERS[t[0]].short}
-        </div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 8, fontWeight: 600, color: pc, letterSpacing: "0.08em", opacity: 0.8 }}>T{t.join("+")} · {TIERS[t[0]].short}</div>
       </div>
     </div>
   );
@@ -129,45 +108,25 @@ function CellBadge({ person, role, onToggle, onRemove, cellKey }) {
   const ringColor = role === "host" ? "#888" : "#ef4444";
   const [hov, setHov] = useState(false);
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", JSON.stringify({ id: person.id, src: "cell", from: cellKey }));
-        e.dataTransfer.effectAllowed = "move"; e.stopPropagation();
-      }}
-      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: 5,
-        padding: "3px 6px 3px 3px", borderRadius: 8, cursor: "grab", position: "relative",
-        transition: "all 0.12s ease", userSelect: "none",
-        transform: hov ? "scale(1.04)" : "scale(1)",
-        background: role === "host" ? "rgba(255,255,255,0.04)" : "rgba(239,68,68,0.08)",
-        border: `1px solid ${role === "host" ? "rgba(255,255,255,0.1)" : "rgba(239,68,68,0.25)"}`,
-      }}
-    >
-      <div onClick={(e) => { e.stopPropagation(); onToggle(); }} style={{ cursor: "pointer" }}
-        title={`Click → ${role === "host" ? "INTERVIEWED" : "HOSTING"}`}>
+    <div draggable onDragStart={(e) => {
+      e.dataTransfer.setData("text/plain", JSON.stringify({ id: person.id, src: "cell", from: cellKey }));
+      e.dataTransfer.effectAllowed = "move"; e.stopPropagation();
+    }} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+    style={{
+      display: "flex", alignItems: "center", gap: 5, padding: "3px 6px 3px 3px", borderRadius: 8,
+      cursor: "grab", position: "relative", transition: "all 0.12s ease", userSelect: "none",
+      transform: hov ? "scale(1.04)" : "scale(1)",
+      background: role === "host" ? "rgba(255,255,255,0.04)" : "rgba(239,68,68,0.08)",
+      border: `1px solid ${role === "host" ? "rgba(255,255,255,0.1)" : "rgba(239,68,68,0.25)"}`,
+    }}>
+      <div onClick={(e) => { e.stopPropagation(); onToggle(); }} style={{ cursor: "pointer" }} title={`Click → ${role === "host" ? "INTERVIEWED" : "HOSTING"}`}>
         <InitialCircle person={person} size={26} ringColor={ringColor} />
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{
-          fontFamily: "var(--display)", fontSize: 10, fontWeight: 600, lineHeight: 1.2,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          color: role === "host" ? "#ccc" : "#fca5a5",
-        }}>{person.name.split(" ")[0]}</div>
-        <div style={{
-          fontFamily: "var(--mono)", fontSize: 7, fontWeight: 700, letterSpacing: "0.1em",
-          color: role === "host" ? "#888" : "var(--red)",
-        }}>{role === "host" ? "HOSTING" : "INTERVIEWED"}</div>
+        <div style={{ fontFamily: "var(--display)", fontSize: 10, fontWeight: 600, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: role === "host" ? "#ccc" : "#fca5a5" }}>{person.name.split(" ")[0]}</div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 7, fontWeight: 700, letterSpacing: "0.1em", color: role === "host" ? "#888" : "var(--red)" }}>{role === "host" ? "HOSTING" : "INTERVIEWED"}</div>
       </div>
-      {hov && (
-        <button onClick={(e) => { e.stopPropagation(); onRemove(); }} style={{
-          position: "absolute", top: -6, right: -6, width: 16, height: 16, borderRadius: "50%",
-          background: "var(--red)", border: "1px solid #b91c1c", color: "#fff",
-          fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", padding: 0, lineHeight: 1, zIndex: 5,
-        }}>×</button>
-      )}
+      {hov && <button onClick={(e) => { e.stopPropagation(); onRemove(); }} style={{ position: "absolute", top: -6, right: -6, width: 16, height: 16, borderRadius: "50%", background: "var(--red)", border: "1px solid #b91c1c", color: "#fff", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, lineHeight: 1, zIndex: 5 }}>×</button>}
     </div>
   );
 }
@@ -178,27 +137,194 @@ function NoteEditor({ value, onChange }) {
   const ref = useRef(null);
   useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
   useEffect(() => { setDraft(value || ""); }, [value]);
-
-  if (editing) {
-    return (
-      <input ref={ref} value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { setEditing(false); onChange(draft); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { setEditing(false); onChange(draft); } if (e.key === "Escape") { setEditing(false); setDraft(value || ""); } }}
-        placeholder="Add note..." maxLength={80}
-        style={{
-          width: "100%", padding: "2px 4px", borderRadius: 4,
-          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)",
-          color: "#aaa", fontFamily: "var(--mono)", fontSize: 8, outline: "none", position: "relative", zIndex: 2,
-        }}
-      />
-    );
-  }
+  if (editing) return (
+    <input ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { setEditing(false); onChange(draft); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { setEditing(false); onChange(draft); } if (e.key === "Escape") { setEditing(false); setDraft(value || ""); } }}
+      placeholder="Add note..." maxLength={80}
+      style={{ width: "100%", padding: "2px 4px", borderRadius: 4, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: "#aaa", fontFamily: "var(--mono)", fontSize: 8, outline: "none", position: "relative", zIndex: 2 }} />
+  );
   return (
     <div onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Click to edit note"
       style={{ fontFamily: "var(--mono)", fontSize: 8, color: "#555", cursor: "text", padding: "1px 2px", borderRadius: 3, position: "relative", zIndex: 2, marginTop: "auto", transition: "color 0.15s" }}
       onMouseEnter={(e) => { e.currentTarget.style.color = "#888"; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#555"; }}>
       {value ? value : <span style={{ opacity: 0.4 }}>+ note</span>}
+    </div>
+  );
+}
+
+// ─── Availability Modal ──────────────────────────────────────────────────────
+
+function AvailabilityModal({ schedule, onSave, onClose, userName }) {
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [selectedDays, setSelectedDays] = useState([]);
+
+  // When person is selected, load their existing availability
+  useEffect(() => {
+    if (selectedPerson) {
+      setSelectedDays(schedule.availability[selectedPerson] || []);
+    }
+  }, [selectedPerson, schedule.availability]);
+
+  const toggleDay = (dayKey) => {
+    setSelectedDays((prev) => prev.includes(dayKey) ? prev.filter((d) => d !== dayKey) : [...prev, dayKey]);
+  };
+
+  const handleSave = () => {
+    if (!selectedPerson) return;
+    onSave(selectedPerson, selectedDays);
+    onClose();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#151518", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 32, maxWidth: 480, width: "90%" }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <span style={{ fontSize: 28 }}>✈️</span>
+          <div style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "#eee", marginTop: 8 }}>Make It Easy</div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#666", marginTop: 4 }}>Select your name, then check the days you&apos;ll be in San Jose</div>
+        </div>
+
+        {/* Person picker */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#555", letterSpacing: "0.1em", marginBottom: 8 }}>WHO ARE YOU?</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {TEAM.map((p) => {
+              const active = selectedPerson === p.id;
+              const pc = tierColor(p);
+              return (
+                <button key={p.id} onClick={() => setSelectedPerson(p.id)} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8,
+                  background: active ? `${pc}20` : "rgba(255,255,255,0.03)",
+                  border: `1.5px solid ${active ? pc : "rgba(255,255,255,0.08)"}`,
+                  cursor: "pointer", transition: "all 0.15s",
+                }}>
+                  <InitialCircle person={p} size={22} />
+                  <span style={{ fontFamily: "var(--display)", fontSize: 11, fontWeight: 600, color: active ? "#eee" : "#888" }}>{p.name.split(" ")[0]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Day picker */}
+        {selectedPerson && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#555", letterSpacing: "0.1em", marginBottom: 8 }}>WHICH DAYS ARE YOU IN TOWN?</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {DAYS.map((d) => {
+                const checked = selectedDays.includes(d.key);
+                return (
+                  <button key={d.key} onClick={() => toggleDay(d.key)} style={{
+                    flex: 1, padding: "12px 6px", borderRadius: 10, textAlign: "center",
+                    background: checked ? "rgba(118,185,0,0.12)" : "rgba(255,255,255,0.03)",
+                    border: `1.5px solid ${checked ? "var(--green)" : "rgba(255,255,255,0.08)"}`,
+                    cursor: "pointer", transition: "all 0.15s",
+                  }}>
+                    <div style={{ fontFamily: "var(--display)", fontSize: 13, fontWeight: 700, color: checked ? "var(--green)" : "#666" }}>{d.key.toUpperCase()}</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: checked ? "#76B900aa" : "#444", marginTop: 2 }}>{d.date}</div>
+                    <div style={{ marginTop: 6, fontSize: 18 }}>{checked ? "✅" : "⬜"}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#888", fontFamily: "var(--mono)", fontSize: 11, cursor: "pointer" }}>Cancel</button>
+          <button onClick={handleSave} disabled={!selectedPerson}
+            style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: selectedPerson ? "var(--green)" : "#333", color: "#000", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", cursor: selectedPerson ? "pointer" : "not-allowed", opacity: selectedPerson ? 1 : 0.4, transition: "all 0.15s" }}>
+            Save Availability
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Availability Tab View ───────────────────────────────────────────────────
+
+function AvailabilityView({ availability }) {
+  return (
+    <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.01)" }}>
+      {/* Header */}
+      <div style={{ display: "grid", gridTemplateColumns: "180px repeat(5, 1fr)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ padding: "12px 14px", fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: "#555" }}>TEAM MEMBER</div>
+        {DAYS.map((d) => (
+          <div key={d.key} style={{ padding: "12px 6px", textAlign: "center", borderLeft: "1px solid rgba(255,255,255,0.06)", background: d.sub ? "rgba(118,185,0,0.05)" : "transparent" }}>
+            <div style={{ fontFamily: "var(--display)", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", color: d.sub ? "var(--green)" : "#bbb" }}>{d.full}</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "#555" }}>{d.date}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Rows */}
+      {TEAM.map((person, ri) => {
+        const personAvail = availability[person.id] || [];
+        const pc = tierColor(person);
+        const t = Array.isArray(person.tier) ? person.tier : [person.tier];
+        return (
+          <div key={person.id} style={{
+            display: "grid", gridTemplateColumns: "180px repeat(5, 1fr)",
+            borderBottom: ri < TEAM.length - 1 ? "1px solid rgba(255,255,255,0.035)" : "none",
+            minHeight: 52,
+          }}>
+            <div style={{ padding: "8px 14px", display: "flex", alignItems: "center", gap: 8, borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+              <InitialCircle person={person} size={28} />
+              <div>
+                <div style={{ fontFamily: "var(--display)", fontSize: 12, fontWeight: 600, color: "#ddd" }}>{person.name}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 7, fontWeight: 600, color: pc, letterSpacing: "0.08em" }}>T{t.join("+")}</div>
+              </div>
+            </div>
+            {DAYS.map((d) => {
+              const isAvail = personAvail.includes(d.key);
+              return (
+                <div key={d.key} style={{
+                  borderLeft: "1px solid rgba(255,255,255,0.035)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isAvail ? "rgba(118,185,0,0.06)" : "transparent",
+                  transition: "background 0.15s",
+                }}>
+                  {isAvail ? (
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 7,
+                      background: "rgba(118,185,0,0.15)", border: "1.5px solid var(--green)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 14,
+                    }}>✓</div>
+                  ) : (
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 7,
+                      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontFamily: "var(--mono)", fontSize: 10, color: "#333",
+                    }}>–</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Summary row */}
+      <div style={{ display: "grid", gridTemplateColumns: "180px repeat(5, 1fr)", borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}>
+        <div style={{ padding: "10px 14px", fontFamily: "var(--mono)", fontSize: 9, fontWeight: 700, color: "#555", letterSpacing: "0.08em" }}>TOTAL IN TOWN</div>
+        {DAYS.map((d) => {
+          const count = TEAM.filter((p) => (availability[p.id] || []).includes(d.key)).length;
+          return (
+            <div key={d.key} style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 0" }}>
+              <span style={{
+                fontFamily: "var(--mono)", fontSize: 16, fontWeight: 800,
+                color: count >= 5 ? "var(--green)" : count >= 3 ? "var(--amber)" : count > 0 ? "#888" : "#333",
+              }}>{count}</span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#555", marginLeft: 4 }}>/ {TEAM.length}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -214,13 +340,13 @@ export default function Page() {
   const [userName, setUserName] = useState("");
   const [showNameModal, setShowNameModal] = useState(false);
   const [syncPulse, setSyncPulse] = useState(false);
+  const [activeTab, setActiveTab] = useState("schedule");
+  const [showAvailModal, setShowAvailModal] = useState(false);
 
-  // Load on mount
   useEffect(() => {
     (async () => { const d = await loadSchedule(); setSchedule(d); setLoaded(true); })();
   }, []);
 
-  // Poll every 5s for changes from other users
   useEffect(() => {
     const iv = setInterval(async () => {
       const d = await loadSchedule();
@@ -237,13 +363,8 @@ export default function Page() {
 
   const persist = useCallback(async (newSchedule) => {
     const data = { ...newSchedule, lastUpdated: Date.now(), updatedBy: userName || "Unknown" };
-    setSchedule(data);
-    setSaving(true);
-    await saveSchedule(data);
-    setSaving(false);
+    setSchedule(data); setSaving(true); await saveSchedule(data); setSaving(false);
   }, [userName]);
-
-  // ─── Actions (all use schedule directly, persist sets state once) ──────────
 
   const addToCell = useCallback((ck, pid, role = "host") => {
     if (!ensureName()) return;
@@ -287,6 +408,11 @@ export default function Page() {
     persist({ ...schedule, notes: nn });
   }, [ensureName, persist, schedule]);
 
+  const saveAvailability = useCallback((personId, days) => {
+    const newAvail = { ...schedule.availability, [personId]: days };
+    persist({ ...schedule, availability: newAvail });
+  }, [persist, schedule]);
+
   const handleDrop = useCallback((ck, e) => {
     e.preventDefault(); setDragOver(null);
     try {
@@ -296,13 +422,12 @@ export default function Page() {
     } catch {}
   }, [addToCell, moveToCell]);
 
-  // Stats
   const counts = {};
   Object.values(schedule.cells).forEach((c) => c.forEach((p) => { counts[p.id] = (counts[p.id] || 0) + 1; }));
   const total = Object.values(schedule.cells).reduce((s, c) => s + c.length, 0);
   const lastTime = schedule.lastUpdated ? new Date(schedule.lastUpdated).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const availCount = Object.keys(schedule.availability).filter((k) => (schedule.availability[k] || []).length > 0).length;
 
-  // Loading state
   if (!loaded) return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center" }}>
@@ -315,7 +440,6 @@ export default function Page() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", position: "relative", overflow: "auto" }}>
-      {/* BG */}
       <div style={{ position: "fixed", inset: 0, backgroundImage: "linear-gradient(rgba(118,185,0,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(118,185,0,0.02) 1px, transparent 1px)", backgroundSize: "48px 48px", pointerEvents: "none" }} />
       <div style={{ position: "absolute", top: -160, left: "50%", transform: "translateX(-50%)", width: 900, height: 350, background: "radial-gradient(ellipse, rgba(118,185,0,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
 
@@ -335,6 +459,9 @@ export default function Page() {
           </div>
         </div>
       )}
+
+      {/* Availability modal */}
+      {showAvailModal && <AvailabilityModal schedule={schedule} onSave={saveAvailability} onClose={() => setShowAvailModal(false)} userName={userName} />}
 
       <div style={{ position: "relative", zIndex: 1, maxWidth: 1440, margin: "0 auto", padding: "20px 16px 48px" }}>
         {/* HEADER */}
@@ -368,120 +495,156 @@ export default function Page() {
           {!userName && <span style={{ color: "var(--amber)", cursor: "pointer" }} onClick={() => setShowNameModal(true)}>· Click to set your name</span>}
         </div>
 
-        {/* LEGEND */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#555", boxShadow: "0 0 0 2.5px #888" }} />
-            <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#aaa", letterSpacing: "0.06em" }}>HOSTING</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#555", boxShadow: "0 0 0 2.5px var(--red)" }} />
-            <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#fca5a5", letterSpacing: "0.06em" }}>INTERVIEWED</span>
-          </div>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#444", alignSelf: "center" }}>CLICK CIRCLE TO TOGGLE</span>
-        </div>
-
-        {/* TIER FILTERS */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 12 }}>
-          {Object.entries(TIERS).map(([t, info]) => {
-            const active = tierFilter === Number(t);
-            return (
-              <button key={t} onClick={() => setTierFilter(active ? null : Number(t))}
-                style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 7, background: active ? info.bg : "rgba(255,255,255,0.02)", border: `1px solid ${active ? info.border : "rgba(255,255,255,0.06)"}`, cursor: "pointer", transition: "all 0.15s" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: info.color, boxShadow: `0 0 5px ${info.color}40` }} />
-                <span style={{ fontFamily: "var(--mono)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", color: active ? info.color : "#777" }}>T{t} · {info.label.toUpperCase()}</span>
+        {/* ═══ TABS + MAKE IT EASY ═══ */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+          {/* Tab buttons */}
+          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 3, border: "1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              { key: "schedule", label: "SCHEDULE", icon: "📋" },
+              { key: "availability", label: `AVAILABILITY (${availCount}/${TEAM.length})`, icon: "📍" },
+            ].map((tab) => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+                padding: "8px 16px", borderRadius: 8, border: "none",
+                background: activeTab === tab.key ? "rgba(118,185,0,0.12)" : "transparent",
+                color: activeTab === tab.key ? "var(--green)" : "#666",
+                fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+                cursor: "pointer", transition: "all 0.15s",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span>{tab.icon}</span>
+                {tab.label}
               </button>
-            );
-          })}
-        </div>
-
-        {/* ROSTER */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.015)", border: "1px dashed rgba(255,255,255,0.08)" }}>
-          <div style={{ width: "100%", textAlign: "center", marginBottom: 6, fontFamily: "var(--mono)", fontSize: 9, color: "#444", letterSpacing: "0.1em" }}>
-            ↕ DRAG INTO SCHEDULE · {total} SLOT{total !== 1 ? "S" : ""} ASSIGNED
-          </div>
-          {TEAM.filter((p) => { if (!tierFilter) return true; const t = Array.isArray(p.tier) ? p.tier : [p.tier]; return t.includes(tierFilter); }).map((p) => (
-            <RosterBadge key={p.id} person={p} count={counts[p.id] || 0} onDragStart={() => {}} />
-          ))}
-        </div>
-
-        {/* GRID */}
-        <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.01)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ padding: "10px 6px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(118,185,0,0.03)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#76B900" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>
-            </div>
-            {DAYS.map((d) => (
-              <div key={d.key} style={{ padding: "10px 6px", textAlign: "center", borderLeft: "1px solid rgba(255,255,255,0.06)", background: d.sub ? "rgba(118,185,0,0.05)" : "transparent" }}>
-                <div style={{ fontFamily: "var(--display)", fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", color: d.sub ? "var(--green)" : "#bbb" }}>{d.full}</div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#555", letterSpacing: "0.06em" }}>{d.date}</div>
-                {d.sub && <div style={{ marginTop: 3, fontSize: 7, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: "0.12em", fontWeight: 700, padding: "1px 6px", background: "rgba(118,185,0,0.1)", borderRadius: 3, display: "inline-block" }}>{d.sub}</div>}
-              </div>
             ))}
           </div>
 
-          {HOURS.map((hour, ri) => {
-            const isLunch = hour === 12;
-            return (
-            <div key={hour} style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: ri < HOURS.length - 1 ? "1px solid rgba(255,255,255,0.035)" : "none", minHeight: isLunch ? 52 : 68 }}>
-              <div style={{ padding: "4px 8px 4px 4px", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", borderRight: "1px solid rgba(255,255,255,0.06)", background: isLunch ? "rgba(255,255,255,0.03)" : undefined }}>
-                <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600, color: isLunch ? "#555" : "#4a4a4a" }}>{fmtH(hour)}</span>
+          {/* Make It Easy button */}
+          <button onClick={() => setShowAvailModal(true)} style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 20px", borderRadius: 10, border: "none",
+            background: "linear-gradient(135deg, var(--green), var(--blue))",
+            color: "#000", fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700,
+            letterSpacing: "0.06em", cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(118,185,0,0.2)",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(118,185,0,0.3)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(118,185,0,0.2)"; }}>
+            ✈️ Make It Easy — Set Your Days
+          </button>
+        </div>
+
+        {/* ═══ SCHEDULE TAB ═══ */}
+        {activeTab === "schedule" && (
+          <>
+            {/* LEGEND */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#555", boxShadow: "0 0 0 2.5px #888" }} />
+                <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#aaa", letterSpacing: "0.06em" }}>HOSTING</span>
               </div>
-              {isLunch ? (
-                <div style={{
-                  gridColumn: "2 / -1",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  background: "repeating-linear-gradient(135deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 20px)",
-                  borderLeft: "1px solid rgba(255,255,255,0.035)",
-                  position: "relative", overflow: "hidden",
-                }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "6px 16px", borderRadius: 8,
-                    background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)",
-                  }}>
-                    <span style={{ fontSize: 14 }}>🍽</span>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "#666" }}>
-                      LUNCH BREAK · 12–1 PM
-                    </span>
-                  </div>
-                </div>
-              ) : DAYS.map((day) => {
-                const ck = `${day.key}-${hour}`;
-                const cd = schedule.cells[ck] || [];
-                const isOver = dragOver === ck;
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 14, height: 14, borderRadius: "50%", background: "#555", boxShadow: "0 0 0 2.5px var(--red)" }} />
+                <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#fca5a5", letterSpacing: "0.06em" }}>INTERVIEWED</span>
+              </div>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#444", alignSelf: "center" }}>CLICK CIRCLE TO TOGGLE</span>
+            </div>
+
+            {/* TIER FILTERS */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 12 }}>
+              {Object.entries(TIERS).map(([t, info]) => {
+                const active = tierFilter === Number(t);
                 return (
-                  <div key={ck}
-                    onDrop={(e) => handleDrop(ck, e)}
-                    onDragOver={(e) => { e.preventDefault(); setDragOver(ck); }}
-                    onDragLeave={() => setDragOver(null)}
-                    style={{
-                      borderLeft: "1px solid rgba(255,255,255,0.035)", padding: 4,
-                      background: isOver ? "rgba(118,185,0,0.08)" : undefined,
-                      transition: "background 0.12s ease", position: "relative", minHeight: 68,
-                      display: "flex", flexDirection: "column", gap: 3,
-                    }}>
-                    <div style={{ position: "absolute", left: 6, right: 6, top: "50%", height: 1, background: "rgba(255,255,255,0.018)", pointerEvents: "none" }} />
-                    {isOver && cd.length === 0 && (
-                      <div style={{ position: "absolute", inset: 4, border: "2px dashed rgba(118,185,0,0.3)", borderRadius: 8, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green)", opacity: 0.6 }}>DROP HERE</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 3, position: "relative", zIndex: 1 }}>
-                      {cd.map((entry) => {
-                        const person = TEAM.find((x) => x.id === entry.id);
-                        if (!person) return null;
-                        return <CellBadge key={entry.id} person={person} role={entry.role} cellKey={ck} onToggle={() => toggleRole(ck, entry.id)} onRemove={() => removeFromCell(ck, entry.id)} />;
-                      })}
-                    </div>
-                    <NoteEditor value={schedule.notes[ck] || ""} onChange={(v) => setNote(ck, v)} />
-                  </div>
+                  <button key={t} onClick={() => setTierFilter(active ? null : Number(t))}
+                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 12px", borderRadius: 7, background: active ? info.bg : "rgba(255,255,255,0.02)", border: `1px solid ${active ? info.border : "rgba(255,255,255,0.06)"}`, cursor: "pointer", transition: "all 0.15s" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: info.color, boxShadow: `0 0 5px ${info.color}40` }} />
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", color: active ? info.color : "#777" }}>T{t} · {info.label.toUpperCase()}</span>
+                  </button>
                 );
               })}
             </div>
-            );
-          })}
-        </div>
+
+            {/* ROSTER */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 18, padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.015)", border: "1px dashed rgba(255,255,255,0.08)" }}>
+              <div style={{ width: "100%", textAlign: "center", marginBottom: 6, fontFamily: "var(--mono)", fontSize: 9, color: "#444", letterSpacing: "0.1em" }}>
+                ↕ DRAG INTO SCHEDULE · {total} SLOT{total !== 1 ? "S" : ""} ASSIGNED
+              </div>
+              {TEAM.filter((p) => { if (!tierFilter) return true; const t = Array.isArray(p.tier) ? p.tier : [p.tier]; return t.includes(tierFilter); }).map((p) => (
+                <RosterBadge key={p.id} person={p} count={counts[p.id] || 0} onDragStart={() => {}} />
+              ))}
+            </div>
+
+            {/* GRID */}
+            <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.01)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ padding: "10px 6px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(118,185,0,0.03)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#76B900" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>
+                </div>
+                {DAYS.map((d) => (
+                  <div key={d.key} style={{ padding: "10px 6px", textAlign: "center", borderLeft: "1px solid rgba(255,255,255,0.06)", background: d.sub ? "rgba(118,185,0,0.05)" : "transparent" }}>
+                    <div style={{ fontFamily: "var(--display)", fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", color: d.sub ? "var(--green)" : "#bbb" }}>{d.full}</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#555", letterSpacing: "0.06em" }}>{d.date}</div>
+                    {d.sub && <div style={{ marginTop: 3, fontSize: 7, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: "0.12em", fontWeight: 700, padding: "1px 6px", background: "rgba(118,185,0,0.1)", borderRadius: 3, display: "inline-block" }}>{d.sub}</div>}
+                  </div>
+                ))}
+              </div>
+
+              {HOURS.map((hour, ri) => {
+                const isLunch = hour === 12;
+                return (
+                <div key={hour} style={{ display: "grid", gridTemplateColumns: "64px repeat(5, 1fr)", borderBottom: ri < HOURS.length - 1 ? "1px solid rgba(255,255,255,0.035)" : "none", minHeight: isLunch ? 52 : 68 }}>
+                  <div style={{ padding: "4px 8px 4px 4px", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", borderRight: "1px solid rgba(255,255,255,0.06)", background: isLunch ? "rgba(255,255,255,0.03)" : undefined }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600, color: isLunch ? "#555" : "#4a4a4a" }}>{fmtH(hour)}</span>
+                  </div>
+                  {isLunch ? (
+                    <div style={{ gridColumn: "2 / -1", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "repeating-linear-gradient(135deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.03) 10px, rgba(255,255,255,0.03) 20px)", borderLeft: "1px solid rgba(255,255,255,0.035)", position: "relative", overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 16px", borderRadius: 8, background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <span style={{ fontSize: 14 }}>🍽</span>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", color: "#666" }}>LUNCH BREAK · 12–1 PM</span>
+                      </div>
+                    </div>
+                  ) : DAYS.map((day) => {
+                    const ck = `${day.key}-${hour}`;
+                    const cd = schedule.cells[ck] || [];
+                    const isOver = dragOver === ck;
+                    return (
+                      <div key={ck} onDrop={(e) => handleDrop(ck, e)} onDragOver={(e) => { e.preventDefault(); setDragOver(ck); }} onDragLeave={() => setDragOver(null)}
+                        style={{ borderLeft: "1px solid rgba(255,255,255,0.035)", padding: 4, background: isOver ? "rgba(118,185,0,0.08)" : undefined, transition: "background 0.12s ease", position: "relative", minHeight: 68, display: "flex", flexDirection: "column", gap: 3 }}>
+                        <div style={{ position: "absolute", left: 6, right: 6, top: "50%", height: 1, background: "rgba(255,255,255,0.018)", pointerEvents: "none" }} />
+                        {isOver && cd.length === 0 && (
+                          <div style={{ position: "absolute", inset: 4, border: "2px dashed rgba(118,185,0,0.3)", borderRadius: 8, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green)", opacity: 0.6 }}>DROP HERE</span>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 3, position: "relative", zIndex: 1 }}>
+                          {cd.map((entry) => {
+                            const person = TEAM.find((x) => x.id === entry.id);
+                            if (!person) return null;
+                            return <CellBadge key={entry.id} person={person} role={entry.role} cellKey={ck} onToggle={() => toggleRole(ck, entry.id)} onRemove={() => removeFromCell(ck, entry.id)} />;
+                          })}
+                        </div>
+                        <NoteEditor value={schedule.notes[ck] || ""} onChange={(v) => setNote(ck, v)} />
+                      </div>
+                    );
+                  })}
+                </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ═══ AVAILABILITY TAB ═══ */}
+        {activeTab === "availability" && (
+          <>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "#666" }}>
+                Team members use the <strong style={{ color: "var(--green)" }}>Make It Easy</strong> button to mark which days they&apos;re in San Jose.
+                {availCount < TEAM.length && <span style={{ color: "var(--amber)" }}> · {TEAM.length - availCount} still need to respond</span>}
+              </p>
+            </div>
+            <AvailabilityView availability={schedule.availability} />
+          </>
+        )}
 
         {/* EVENTS */}
         <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
